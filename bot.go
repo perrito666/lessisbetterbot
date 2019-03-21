@@ -96,6 +96,13 @@ func (b *bot) handleMsg(conn *irc.Conn, line *irc.Line) {
 			}
 			conn.Privmsg(channel, fmt.Sprintf("%s: \"%s\"", line.Nick, u))
 		}
+	case strings.HasPrefix(text, "como esta el billete?"):
+		usdArs, err := skills.DollArs()
+		if err != nil {
+			b.logger.Printf("dollars failed: %v", err)
+			break
+		}
+		conn.Privmsg(channel, fmt.Sprintf("%s: %s", line.Nick, usdArs))
 
 	}
 
