@@ -1,166 +1,92 @@
 package main
 
 import (
-	"crypto/tls"
 	"fmt"
 	"log"
-	"net/url"
 	"os"
-	"strings"
-	"time"
 
-	"github.com/perrito666/lessisbetterbot/skills"
-
-	"github.com/ShiftLeftSecurity/gaum/db/connection"
-	"github.com/ShiftLeftSecurity/gaum/db/logging"
-	"github.com/ShiftLeftSecurity/gaum/db/postgres"
-	irc "github.com/fluffle/goirc/client"
-	"github.com/mvdan/xurls"
+	"github.com/juju/gnuflag"
 	"github.com/pkg/errors"
-	"gopkg.in/ini.v1"
 )
 
-type bot struct {
-	logger   *log.Logger
-	nickname string
-	password string
-	channel  string
-	storage  connection.DB
-}
+var (
+	ErrNoConfigPath = errors.New("config path not passed")
+	ErrNoConfig     = errors.New("config file does not exist")
+	ErrConfigExists = errors.New("config file exists")
+)
 
-func (b *bot) connect(connectionString string) error {
-	maxConnLifetime := 1 * time.Minute
-	logLevel := connection.Error
-
-	connector := postgres.Connector{
-		ConnectionString: connectionString,
+func flags() (c *Config, err error) {
+	gnuflag.CommandLine.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "%s [flags] /path/to/config.ini:\n", os.Args[0])
+		gnuflag.PrintDefaults()
 	}
-	db, err := connector.Open(&connection.Information{
-		Logger:          logging.NewGoLogger(b.logger),
-		LogLevel:        logLevel,
-		ConnMaxLifetime: &maxConnLifetime,
-	})
+	createConfig := gnuflag.CommandLine.Bool("createconfig", false, "create the initial config on the config file, will only work if the file does not exist")
+	netName := gnuflag.CommandLine.String("network", "freenode", "the name of the url to be connected to (must match config file section)")
+	defer func() {
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Found Errors: %v\n\n", err)
+			gnuflag.CommandLine.Usage()
+		}
+	}()
+	err = gnuflag.CommandLine.Parse(true, os.Args[1:])
 	if err != nil {
-		return errors.Wrapf(err, "initializing psql backend")
+		return nil, err
 	}
-	b.storage = db
-	return nil
-}
-
-func (b *bot) live() error {
-	// Creating a simple IRC client is simple.
-	c := irc.SimpleClient(b.nickname)
-
-	// Or, create a config and fiddle with it first:
-	cfg := irc.NewConfig(b.nickname)
-	cfg.SSL = true
-	cfg.SSLConfig = &tls.Config{ServerName: "irc.freenode.net"}
-	cfg.Server = "irc.freenode.net:7000"
-	cfg.NewNick = func(n string) string { return n + "'" }
-	cfg.Pass = b.password
-	c = irc.Client(cfg)
-
-	// Add handlers to do things here!
-	// e.g. join a channel on connect.
-	c.HandleFunc(irc.CONNECTED,
-		func(conn *irc.Conn, line *irc.Line) {
-			b.logger.Println("connected to freenode")
-			conn.Privmsg("nickserv", fmt.Sprintf("identify %s", b.password))
-			conn.Join(b.channel)
-			b.logger.Printf("joined %q\n", b.channel)
-		})
-	// And a signal on disconnect
-	quit := make(chan bool)
-	c.HandleFunc(irc.DISCONNECTED,
-		func(conn *irc.Conn, line *irc.Line) {
-			b.logger.Println("disconnected from freenode")
-			quit <- true
-		})
-
-	c.HandleFunc(irc.PRIVMSG, b.handleMsg)
-
-	// Tell client to connect.
-	b.logger.Println("will connect")
-	if err := c.Connect(); err != nil {
-		return errors.Wrap(err, "connecting to freenode")
+	args := gnuflag.CommandLine.Args()
+	if len(args) != 1 {
+		return nil, ErrNoConfigPath
 	}
-	b.logger.Println("did not fail to connect (?)")
 
-	// Wait for disconnect
-	<-quit
-	return nil
-}
-
-func hasURL(text string) []*url.URL {
-	urls := xurls.Strict().FindAllString(text, -1)
-	result := []*url.URL{}
-	for _, u := range urls {
-		if parsed, err := url.Parse(u); err == nil {
-			result = append(result, parsed)
+	configPath := args[0]
+	if *createConfig {
+		if _, err := os.Stat(configPath); err == nil {
+			return nil, ErrConfigExists
+		}
+		f, err := os.OpenFile(configPath, os.O_CREATE|os.O_RDWR, 0755)
+		if err != nil {
+			return nil, errors.Wrap(err, "creating config file")
+		}
+		defer f.Close()
+		err = writeConfig(f, nil)
+		if err != nil {
+			return nil, errors.Wrap(err, "creating initial config")
+		}
+		return nil, nil
+	} else {
+		if _, err := os.Stat(configPath); os.IsNotExist(err) {
+			return nil, ErrNoConfig
 		}
 	}
-	return result
-}
-
-func (b *bot) handleMsg(conn *irc.Conn, line *irc.Line) {
-	if strings.ToLower(line.Nick) == strings.ToLower(b.nickname) {
-		return
+	c, err = LoadConfig(configPath, *netName)
+	if err != nil {
+		return nil, errors.Wrapf(err, "loading config from %q for network %q", configPath, *netName)
 	}
-	text := line.Text()
-	channel := line.Args[0]
-	msgUrls := hasURL(text)
-	switch {
-	case len(msgUrls) > 0:
-		for _, eachURL := range msgUrls {
-			u, err := skills.WebPeek(eachURL, b.logger)
-			if err != nil {
-				conn.Privmsg(channel, fmt.Sprintf("cant fetch title: %v", err))
-				break
-			}
-			conn.Privmsg(channel, fmt.Sprintf("%s: \"%s\"", line.Nick, u))
-		}
-
-	}
-
+	return c, nil
 }
 
 func main() {
-
-	logger := log.New(os.Stdout, "lessisbetterbot: ", log.Ldate|log.Ltime|log.Lshortfile)
-	if len(os.Args) < 2 {
-		logger.Fatal("this command takes one possitional argument: the path to the config file.")
-		os.Exit(1)
-	}
-
-	logger.Printf("loading ini file %q\n", os.Args[1])
-	cfg, err := ini.Load(os.Args[1])
+	cfg, err := flags()
 	if err != nil {
-		logger.Fatalf("failed to read config file: %v", err)
+		// flags will print its own stuff
 		os.Exit(1)
 	}
+	if cfg == nil {
+		return
+	}
 
-	connectionString := cfg.Section("").Key("pg_connection_string").String()
+	// Logging initializing, no options, just vanilla
+	logger := log.New(os.Stdout, "lessisbetterbot: ", log.Ldate|log.Ltime|log.Lshortfile)
 
 	libb := bot{
-		logger:   logger,
-		nickname: cfg.Section("freenode").Key("nickname").String(),
-		password: cfg.Section("freenode").Key("password").String(),
-		channel:  "#" + cfg.Section("freenode").Key("channel").String(),
+		logger: logger,
+		cfg:    cfg,
 	}
 
-	if connectionString != "" {
-		err = libb.connect(connectionString)
-		if err != nil {
-			logger.Fatalf("connecting to the persistence storage: %v", err)
-			os.Exit(1)
-		}
-	}
 	logger.Println("going live")
-	logger.Println(libb.nickname)
-	logger.Println(libb.channel)
-	if libb.channel == "#" {
-		os.Exit(1)
-	}
+	logger.Println(cfg.NickName)
+	logger.Println(cfg.Channels)
+
 	fmt.Printf("%v\n", libb.live())
 
 }
