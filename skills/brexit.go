@@ -1,5 +1,12 @@
 package skills
 
+import (
+	"io/ioutil"
+	"net/http"
+
+	"github.com/pkg/errors"
+)
+
 func BrexitStatus() (string, error) {
 	res, err := http.Get("http://r.chipaca.com/howisbrexit.json")
 	if err != nil {
@@ -13,6 +20,6 @@ func BrexitStatus() (string, error) {
 	if err != nil {
 		return "", errors.Wrap(err, "reading john's brexit body")
 	}
-    return string(rawBody), nil
+	return string(rawBody), nil
 
 }

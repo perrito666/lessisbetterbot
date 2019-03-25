@@ -117,8 +117,8 @@ func (b *bot) handleMsg(conn *irc.Conn, line *irc.Line) {
 		}
 		conn.Privmsg(channel, fmt.Sprintf("%s: %s", line.Nick, usdArs))
 
-	case strings.Index(lowerText, "como viene el brexit?"):
-		brexit, err := skills.Brexit()
+	case strings.Index(lowerText, "como viene el brexit?") > -1:
+		brexit, err := skills.BrexitStatus()
 		if err != nil {
 			b.logger.Printf("brexit failed (lol): %v", err)
 			break
