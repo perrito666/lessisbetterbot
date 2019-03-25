@@ -90,6 +90,7 @@ func (b *bot) handleMsg(conn *irc.Conn, line *irc.Line) {
 	text := line.Text()
 	channel := line.Args[0]
 	msgUrls := hasURL(text)
+	lowerText := strings.ToLower(text)
 	switch {
 	case len(msgUrls) > 0:
 		for _, eachURL := range msgUrls {
@@ -100,7 +101,7 @@ func (b *bot) handleMsg(conn *irc.Conn, line *irc.Line) {
 			}
 			conn.Privmsg(channel, fmt.Sprintf("%s: \"%s\"", line.Nick, u))
 		}
-	case billeteRegex.MatchString(strings.ToLower(text)):
+	case billeteRegex.MatchString(lowerText):
 		usdArs, err := skills.DollArs(skills.USD)
 		if err != nil {
 			b.logger.Printf("dollars failed: %v", err)
@@ -108,7 +109,7 @@ func (b *bot) handleMsg(conn *irc.Conn, line *irc.Line) {
 		}
 		conn.Privmsg(channel, fmt.Sprintf("%s: %s", line.Nick, usdArs))
 
-	case billetinioRegex.MatchString(strings.ToLower(text)):
+	case billetinioRegex.MatchString(lowerText):
 		usdArs, err := skills.DollArs(skills.REAL)
 		if err != nil {
 			b.logger.Printf("reais failed: %v", err)
@@ -116,6 +117,13 @@ func (b *bot) handleMsg(conn *irc.Conn, line *irc.Line) {
 		}
 		conn.Privmsg(channel, fmt.Sprintf("%s: %s", line.Nick, usdArs))
 
+	case strings.Index(lowerText, "como viene el brexit?"):
+		brexit, err := skills.Brexit()
+		if err != nil {
+			b.logger.Printf("brexit failed (lol): %v", err)
+			break
+		}
+		conn.Privmsg(channel, fmt.Sprintf("%s: Current brexit status is %s", line.Nick, brexit))
 	}
 
 }
