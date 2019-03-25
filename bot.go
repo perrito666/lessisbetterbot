@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/url"
+	"regexp"
 	"strings"
 
 	irc "github.com/fluffle/goirc/client"
@@ -77,6 +78,9 @@ func hasURL(text string) []*url.URL {
 	return result
 }
 
+var billeteRegex = regexp.MustCompile(`c[oó]mo est[aá] el billete.*\?`)
+var billetinioRegex = regexp.MustCompile(`c[oó]mo est[aá] el billetiño.*\?`)
+
 // handleMsg will try to find a skill that suits the message and handle it.
 func (b *bot) handleMsg(conn *irc.Conn, line *irc.Line) {
 	if strings.ToLower(line.Nick) == strings.ToLower(b.cfg.NickName) {
@@ -96,7 +100,7 @@ func (b *bot) handleMsg(conn *irc.Conn, line *irc.Line) {
 			}
 			conn.Privmsg(channel, fmt.Sprintf("%s: \"%s\"", line.Nick, u))
 		}
-	case strings.HasPrefix(text, "como esta el billete?"):
+	case billeteRegex.MatchString(strings.ToLower(text)):
 		usdArs, err := skills.DollArs(skills.USD)
 		if err != nil {
 			b.logger.Printf("dollars failed: %v", err)
@@ -104,7 +108,7 @@ func (b *bot) handleMsg(conn *irc.Conn, line *irc.Line) {
 		}
 		conn.Privmsg(channel, fmt.Sprintf("%s: %s", line.Nick, usdArs))
 
-	case strings.HasPrefix(text, "como esta el billetiño?"):
+	case billetinioRegex.MatchString(strings.ToLower(text)):
 		usdArs, err := skills.DollArs(skills.REAL)
 		if err != nil {
 			b.logger.Printf("reais failed: %v", err)
