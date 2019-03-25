@@ -8,8 +8,18 @@ import (
 	"github.com/pkg/errors"
 )
 
+const (
+	// USD holds the string to look for when parsing for USD currency
+	USD = "Dolar U.S.A"
+	// REAL holds the string to look for when parsing for Real currency
+	REAL = "Real *"
+)
+
 // DollArs returns Argentinian peso to USD exchange rate according to Argentina national bank
-func DollArs() (string, error) {
+func DollArs(currency string) (string, error) {
+	if currency == "" {
+		currency = USD
+	}
 	res, err := http.Get("http://www.bna.com.ar/Personas")
 	if err != nil {
 		return "", errors.Wrap(err, "getting bna website")
@@ -27,7 +37,7 @@ func DollArs() (string, error) {
 	var buy, sell []byte
 	var dollar bool
 	extractUSD := func(i int, innerS *goquery.Selection) {
-		if innerS.HasClass("tit") && innerS.Text() == "Dolar U.S.A" {
+		if innerS.HasClass("tit") && innerS.Text() == currency {
 			dollar = true
 			return
 		}
