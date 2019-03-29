@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -23,6 +25,10 @@ const (
 	DefaultNickserv = "delete this unless nickserv otherwise add identify password"
 	// DefaultChannel placeholder list of channels
 	DefaultChannel = "channels separated by comma, dont use hash"
+	// DefaultStoreFolder is the folder where stuff is stored by default.
+	DefaultStoreFolder = "."
+	// DefaultTimeZone is UTC
+	DefaultTimeZone = 0
 
 	// KNetworkURL network url key
 	KNetworkURL = "networkurl"
@@ -36,17 +42,23 @@ const (
 	KNickserv = "nickserv"
 	// KChannel channels key
 	KChannel = "channels"
+	// KStoreFolder is the folder where skills store.
+	KStoreFolder = "storagelocation"
+	// KTimeZone is the UTC difference
+	KTimeZone = "utcdifference"
 )
 
 // Config holds the config for a bot
 type Config struct {
-	NetworkName string
-	NetworkURL  string
-	NickName    string
-	Password    string
-	Ident       string
-	NickservCmd string
-	Channels    []string
+	NetworkName   string
+	NetworkURL    string
+	NickName      string
+	Password      string
+	Ident         string
+	NickservCmd   string
+	Channels      []string
+	StorageFolder string
+	TimeZone      int
 }
 
 // Write writes the config to the file writer
@@ -64,13 +76,20 @@ func LoadConfig(fileName, networkName string) (*Config, error) {
 	if nSection == nil {
 		return nil, errors.Errorf("no config for network %q", networkName)
 	}
+	tz, err := nSection.Key(KTimeZone).Int()
+	if err != nil {
+		fmt.Printf("%s timezone is invalid", nSection.Key(KTimeZone).String())
+		tz = 0
+	}
 	return &Config{
-		NetworkURL:  nSection.Key(KNetworkURL).String(),
-		NickName:    nSection.Key(KNickName).String(),
-		Password:    nSection.Key(KPassword).String(),
-		Ident:       nSection.Key(KIdent).String(),
-		NickservCmd: nSection.Key(KNickserv).String(),
-		Channels:    nSection.Key(KChannel).Strings(","),
+		NetworkURL:    nSection.Key(KNetworkURL).String(),
+		NickName:      nSection.Key(KNickName).String(),
+		Password:      nSection.Key(KPassword).String(),
+		Ident:         nSection.Key(KIdent).String(),
+		NickservCmd:   nSection.Key(KNickserv).String(),
+		Channels:      nSection.Key(KChannel).Strings(","),
+		StorageFolder: nSection.Key(KStoreFolder).String(),
+		TimeZone:      tz,
 	}, nil
 }
 
@@ -78,13 +97,15 @@ func LoadConfig(fileName, networkName string) (*Config, error) {
 func writeConfig(file io.Writer, c *Config) error {
 	if c == nil {
 		c = &Config{
-			NetworkName: DefaultNetwork,
-			NetworkURL:  DefaultNetworkURL,
-			NickName:    DefaultNick,
-			Password:    DefaultPassword,
-			Ident:       DefaultIdent,
-			NickservCmd: DefaultNickserv,
-			Channels:    []string{DefaultChannel},
+			NetworkName:   DefaultNetwork,
+			NetworkURL:    DefaultNetworkURL,
+			NickName:      DefaultNick,
+			Password:      DefaultPassword,
+			Ident:         DefaultIdent,
+			NickservCmd:   DefaultNickserv,
+			Channels:      []string{DefaultChannel},
+			StorageFolder: DefaultStoreFolder,
+			TimeZone:      0,
 		}
 	}
 	f := ini.Empty()
@@ -98,6 +119,8 @@ func writeConfig(file io.Writer, c *Config) error {
 	nSection.NewKey(KIdent, c.Ident)
 	nSection.NewKey(KNickserv, c.NickservCmd)
 	nSection.NewKey(KChannel, strings.Join(c.Channels, ","))
+	nSection.NewKey(KStoreFolder, c.StorageFolder)
+	nSection.NewKey(KTimeZone, strconv.Itoa(c.TimeZone))
 
 	_, err := f.WriteTo(file)
 	if err != nil {

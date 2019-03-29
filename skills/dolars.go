@@ -1,11 +1,17 @@
 package skills
 
 import (
+	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/pkg/errors"
+	"github.com/shopspring/decimal"
+	bolt "go.etcd.io/bbolt"
 )
 
 const (
@@ -16,7 +22,7 @@ const (
 )
 
 // DollArs returns Argentinian peso to USD exchange rate according to Argentina national bank
-func DollArs(currency string) (string, error) {
+func DollArs(currency string, db *bolt.DB, logger *log.Logger) (string, error) {
 	if currency == "" {
 		currency = USD
 	}
@@ -56,5 +62,41 @@ func DollArs(currency string) (string, error) {
 		s.Find("td").Each(extractUSD)
 	})
 
+	err = tryAndStoreCurrency(currency, buy, sell, db)
+	if err != nil {
+		logger.Printf("ERROR: storing currency exchange: %v", err)
+	}
 	return fmt.Sprintf("(Nacion) Compra: %q, Venta: %q", buy, sell), nil
+}
+
+type currencyRecord struct {
+	Sell decimal.Decimal `json:"sell"`
+	Buy  decimal.Decimal `json:"buy"`
+}
+
+func tryAndStoreCurrency(currency string, buy, sell []byte, db *bolt.DB) error {
+	nSell := strings.Replace(string(sell), ",", ".", -1)
+	numericSell, err := decimal.NewFromString(nSell)
+	if err != nil {
+		return errors.Wrapf(err, "sell %q is not a valid currency value", nSell)
+	}
+	nBuy := strings.Replace(string(buy), ",", ".", -1)
+	numericBuy, err := decimal.NewFromString(nBuy)
+	if err != nil {
+		return errors.Wrapf(err, "buy %q is not a valid currency value", nBuy)
+	}
+	newRecord := currencyRecord{
+		Sell: numericSell,
+		Buy:  numericBuy,
+	}
+	db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(currency))
+		key := []byte(time.Now().UTC().Format(time.RFC3339))
+		data, err := json.Marshal(&newRecord)
+		if err != nil {
+			return errors.Wrapf(err, "marshaling record for %s", currency)
+		}
+		return b.Put(key, data)
+	})
+	return nil
 }
