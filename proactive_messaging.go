@@ -15,13 +15,16 @@ import (
 // ProactivelySaySomething will send messages to irc channels
 func ProactivelySaySomething(channels []string, conn *irc.Conn,
 	nick string, db *bolt.DB, logger *log.Logger, tz int) error {
-	newsURLs, err := skills.FetchPoliticalNews()
+	if len(channels) == 0 {
+		logger.Println("no channels to talk to")
+		return nil
+	}
+	newsURLs, err := skills.FetchPoliticalNews(logger)
 	if err != nil {
 		return err
 	}
 	found := false
 	for i := range newsURLs {
-
 		var parsed *url.URL
 		parsed, err := url.Parse(newsURLs[i])
 		if err != nil {
@@ -61,7 +64,7 @@ func ProactivelySaySomething(channels []string, conn *irc.Conn,
 			continue
 		}
 		for _, channel := range channels {
-			conn.Privmsg(channel, fmt.Sprintf("%s: \"%s\"", nick, u))
+			conn.Privmsg("#"+channel, fmt.Sprintf("%s: \"%s\"", nick, u))
 			// This is argentinian news about dollar, lets also send the
 			// exchange rate.
 			if strings.Count(strings.ToLower(u), "dolar") > 0 ||
@@ -72,7 +75,7 @@ func ProactivelySaySomething(channels []string, conn *irc.Conn,
 					logger.Printf("proactive dollars failed: %v", err)
 					continue
 				}
-				conn.Privmsg(channel, fmt.Sprintf("%s: %s", nick, usdArs))
+				conn.Privmsg("#"+channel, fmt.Sprintf("%s: %s", nick, usdArs))
 			}
 		}
 
