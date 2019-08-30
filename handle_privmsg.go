@@ -90,8 +90,7 @@ type webHit struct {
 	Num      int64
 }
 
-// check if we have the passed in web in store or needs fetching.
-func webFromCacheOrHit(eachURL *url.URL, nick string, tz int, db *bolt.DB) (string, error) {
+func webFromCache(eachURL *url.URL, nick string, tz int, db *bolt.DB) (string, error) {
 	cacheHit := &webHit{}
 	err := db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte("webpeek"))
@@ -114,6 +113,19 @@ func webFromCacheOrHit(eachURL *url.URL, nick string, tz int, db *bolt.DB) (stri
 
 		return fmt.Sprintf("[%d] (by %s on %s) %s", cacheHit.Num, cacheHit.Nick, printableTime, cacheHit.Title), nil
 	}
+	return "", nil
+}
+
+// check if we have the passed in web in store or needs fetching.
+func webFromCacheOrHit(eachURL *url.URL, nick string, tz int, db *bolt.DB) (string, error) {
+	cacheHitURL, err := webFromCache(eachURL, nick, tz, db)
+	if err != nil {
+		return "", err
+	}
+	if cacheHitURL != "" {
+		return cacheHitURL, nil
+	}
+	cacheHit := &webHit{}
 	u, err := skills.WebPeek(eachURL)
 	if err != nil {
 		return "", errors.Wrap(err, "cant fetch title")

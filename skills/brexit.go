@@ -7,6 +7,7 @@ import (
 	"github.com/pkg/errors"
 )
 
+// BrexitStatus publishes whatever chipaca decided was brexit status.
 func BrexitStatus() (string, error) {
 	res, err := http.Get("http://r.chipaca.com/howisbrexit.json")
 	if err != nil {

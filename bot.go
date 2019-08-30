@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"path/filepath"
+	"time"
 
 	irc "github.com/fluffle/goirc/client"
 	"github.com/perrito666/lessisbetterbot/skills"
@@ -54,6 +55,8 @@ func (b *bot) live() error {
 		return errors.Wrap(err, "ensuring bucket existence")
 	}
 
+	var connected chan struct{}
+
 	// Add handlers to do things here!
 	// e.g. join a channel on connect.
 	c.HandleFunc(irc.CONNECTED,
@@ -66,12 +69,30 @@ func (b *bot) live() error {
 				conn.Join("#" + channel)
 				b.logger.Printf("joined #%s\n", channel)
 			}
+			connected = make(chan struct{})
+			go func(channels []string) {
+				for {
+					select {
+					case <-time.After(60 * 5 * time.Second):
+						err := ProactivelySaySomething(channels, conn, b.cfg.NickName, b.db,
+							b.logger, b.cfg.TimeZone)
+						if err != nil {
+							b.logger.Printf("Failed to proactively say something: %v", err)
+						}
+					case <-connected:
+						return
+					}
+				}
+			}(b.cfg.Channels)
 		})
 	// And a signal on disconnect
 	quit := make(chan bool)
 	c.HandleFunc(irc.DISCONNECTED,
 		func(conn *irc.Conn, line *irc.Line) {
 			b.logger.Println("disconnected from freenode")
+			//this might panic but I am pretty sure it wont as disconnected is not happening
+			// without connected happening first
+			close(connected)
 			quit <- true
 		})
 
