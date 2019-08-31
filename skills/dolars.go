@@ -62,11 +62,28 @@ func DollArs(currency string, db *bolt.DB, logger *log.Logger) (string, error) {
 		s.Find("td").Each(extractUSD)
 	})
 
-	err = tryAndStoreCurrency(currency, buy, sell, db)
+	sellDiff, buyDiff, err := tryAndStoreCurrency(currency, buy, sell, db)
 	if err != nil {
 		logger.Printf("ERROR: storing currency exchange: %v", err)
 	}
-	return fmt.Sprintf("(Nacion) Compra: %q, Venta: %q", buy, sell), nil
+	sellString := ""
+	if sellDiff.IsNegative() {
+		sellString = fmt.Sprintf("▼ %s", sellDiff.String())
+	} else if sellDiff.Equal(decimal.Zero) {
+		sellString = fmt.Sprintf("=")
+	} else {
+		sellString = fmt.Sprintf("▲ %s", sellDiff.String())
+	}
+
+	buyString := ""
+	if buyDiff.IsNegative() {
+		buyString = fmt.Sprintf("▼ %s", buyDiff.String())
+	} else if buyDiff.Equal(decimal.Zero) {
+		buyString = fmt.Sprintf("=")
+	} else {
+		buyString = fmt.Sprintf("▲ %s", buyDiff.String())
+	}
+	return fmt.Sprintf("(Nacion) Compra: %q (%s), Venta: %q (%s)", buy, buyString, sell, sellString), nil
 }
 
 type currencyRecord struct {
@@ -74,21 +91,38 @@ type currencyRecord struct {
 	Buy  decimal.Decimal `json:"buy"`
 }
 
-func tryAndStoreCurrency(currency string, buy, sell []byte, db *bolt.DB) error {
+func tryAndStoreCurrency(currency string, buy, sell []byte, db *bolt.DB) (decimal.Decimal, decimal.Decimal, error) {
 	nSell := strings.Replace(string(sell), ",", ".", -1)
 	numericSell, err := decimal.NewFromString(nSell)
+	sellDiff := decimal.NewFromFloat(0.0)
+	buyDiff := decimal.NewFromFloat(0.0)
 	if err != nil {
-		return errors.Wrapf(err, "sell %q is not a valid currency value", nSell)
+		return sellDiff, buyDiff, errors.Wrapf(err, "sell %q is not a valid currency value", nSell)
 	}
 	nBuy := strings.Replace(string(buy), ",", ".", -1)
 	numericBuy, err := decimal.NewFromString(nBuy)
 	if err != nil {
-		return errors.Wrapf(err, "buy %q is not a valid currency value", nBuy)
+		return sellDiff, buyDiff, errors.Wrapf(err, "buy %q is not a valid currency value", nBuy)
 	}
 	newRecord := currencyRecord{
 		Sell: numericSell,
 		Buy:  numericBuy,
 	}
+
+	db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(currency))
+		key, value := b.Cursor().Last()
+		if key != nil && value != nil {
+			record := &currencyRecord{}
+			err := json.Unmarshal(value, record)
+			if err != nil {
+				return nil
+			}
+			sellDiff = numericSell.Sub(record.Sell)
+			buyDiff = numericBuy.Sub(record.Buy)
+		}
+		return nil
+	})
 	db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(currency))
 		key := []byte(time.Now().UTC().Format(time.RFC3339))
@@ -98,5 +132,6 @@ func tryAndStoreCurrency(currency string, buy, sell []byte, db *bolt.DB) error {
 		}
 		return b.Put(key, data)
 	})
-	return nil
+
+	return sellDiff, buyDiff, nil
 }

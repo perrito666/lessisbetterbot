@@ -67,7 +67,7 @@ func ProactivelySaySomething(channels []string, conn *irc.Conn,
 			conn.Privmsg("#"+channel, fmt.Sprintf("%s: \"%s\"", nick, u))
 			// This is argentinian news about dollar, lets also send the
 			// exchange rate.
-			if strings.Count(strings.ToLower(u), "dolar") > 0 ||
+			if strings.Count(strings.ToLower(u), "dólar") > 0 ||
 				strings.Count(strings.ToLower(u), "cotiz") > 0 ||
 				strings.Count(strings.ToLower(u), "default") > 0 {
 				usdArs, err := skills.DollArs(skills.USD, db, logger)

@@ -83,11 +83,11 @@ func (b *bot) live() error {
 						}
 					case <-connected:
 						b.logger.Print("disconnected, stopping proactive say\n")
+						b.logger.Println("exiting proactive say")
 						return
 					}
 					nextTime = 60 * 5 * time.Second
 				}
-				b.logger.Println("exiting proactive say")
 			}(b.cfg.Channels)
 		})
 	// And a signal on disconnect
