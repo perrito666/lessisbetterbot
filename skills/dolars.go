@@ -16,7 +16,8 @@ import (
 
 const (
 	// USD holds the string to look for when parsing for USD currency
-	USD = "Dolar U.S.A"
+	USD  = "Dolar U.S.A"
+	USDB = "Dolar Blue"
 	// REAL holds the string to look for when parsing for Real currency
 	REAL = "Real *"
 )
@@ -134,4 +135,63 @@ func tryAndStoreCurrency(currency string, buy, sell []byte, db *bolt.DB) (decima
 	})
 
 	return sellDiff, buyDiff, nil
+}
+
+// DollBlArs returns Argentinian peso to "Blue" USD exchange rate according to El Cronista paper
+func DollBlArs(currency string, db *bolt.DB, logger *log.Logger) (string, error) {
+	if currency == "" {
+		currency = USDB
+	}
+	res, err := http.Get("https://www.cronista.com/MercadosOnline/dolar.html")
+	if err != nil {
+		return "", errors.Wrap(err, "getting cronista website")
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		return "", errors.Errorf("status code error: %d %s", res.StatusCode, res.Status)
+	}
+
+	// Load the HTML document
+	doc, err := goquery.NewDocumentFromReader(res.Body)
+	if err != nil {
+		return "", errors.Wrap(err, "reading site body")
+	}
+	var buy, sell []byte
+	var dollar []byte
+	extractUSD := func(i int, innerS *goquery.Selection) {
+		text := innerS.Text()
+		parts := strings.Split(text, " ")
+		if len(parts) == 2 {
+			dollar = []byte(parts[1])
+		}
+	}
+
+	doc.Find("#dcompra1").Each(extractUSD)
+	buy = dollar[:]
+	doc.Find("#dventa1").Each(extractUSD)
+	sell = dollar[:]
+
+	sellDiff, buyDiff, err := tryAndStoreCurrency(currency, buy, sell, db)
+	if err != nil {
+		logger.Printf("ERROR: storing currency exchange: %v", err)
+	}
+
+	sellString := ""
+	if sellDiff.IsNegative() {
+		sellString = fmt.Sprintf("▼ %s", sellDiff.String())
+	} else if sellDiff.Equal(decimal.Zero) {
+		sellString = fmt.Sprintf("=")
+	} else {
+		sellString = fmt.Sprintf("▲ %s", sellDiff.String())
+	}
+
+	buyString := ""
+	if buyDiff.IsNegative() {
+		buyString = fmt.Sprintf("▼ %s", buyDiff.String())
+	} else if buyDiff.Equal(decimal.Zero) {
+		buyString = fmt.Sprintf("=")
+	} else {
+		buyString = fmt.Sprintf("▲ %s", buyDiff.String())
+	}
+	return fmt.Sprintf("(Cronista Blue) Compra: %q (%s), Venta: %q (%s)", buy, buyString, sell, sellString), nil
 }

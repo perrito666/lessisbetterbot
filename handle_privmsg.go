@@ -17,6 +17,7 @@ import (
 )
 
 var billeteRegex = regexp.MustCompile(`c[oó]mo est[aá] el billete.*\?`)
+var otroBilleteRegex = regexp.MustCompile(`y el otro billete.*\?`)
 var billetinioRegex = regexp.MustCompile(`c[oó]mo est[aá] el billetiño.*\?`)
 
 // handleMsg will try to find a skill that suits the message and handle it.
@@ -62,6 +63,13 @@ func (b *bot) handleMsg(conn *irc.Conn, line *irc.Line) {
 		usdArs, err := skills.DollArs(skills.USD, b.db, b.logger)
 		if err != nil {
 			b.logger.Printf("dollars failed: %v", err)
+			break
+		}
+		conn.Privmsg(channel, fmt.Sprintf("%s: %s", line.Nick, usdArs))
+	case otroBilleteRegex.MatchString(lowerText): //dollars blue
+		usdArs, err := skills.DollBlArs(skills.USDB, b.db, b.logger)
+		if err != nil {
+			b.logger.Printf("blue dollars failed: %v", err)
 			break
 		}
 		conn.Privmsg(channel, fmt.Sprintf("%s: %s", line.Nick, usdArs))

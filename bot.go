@@ -42,7 +42,7 @@ func (b *bot) live() error {
 	// Create buckets for all skills
 	err = attic.Update(func(tx *bolt.Tx) error {
 		for _, bucket := range []string{
-			"webpeek", skills.USD, skills.REAL,
+			"webpeek", skills.USD, skills.REAL, skills.USDB,
 		} {
 			_, err := tx.CreateBucketIfNotExists([]byte(bucket))
 			if err != nil {
