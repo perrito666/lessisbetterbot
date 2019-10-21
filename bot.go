@@ -70,13 +70,13 @@ func (b *bot) live() error {
 				b.logger.Printf("joined #%s\n", channel)
 			}
 			connected = make(chan struct{})
-			go func(channels []string) {
+			go func(privates []string) {
 				b.logger.Println("Starting proactive say")
 				nextTime := 1 * time.Second
 				for {
 					select {
 					case <-time.After(nextTime):
-						err := ProactivelySaySomething(channels, conn, b.cfg.NickName, b.db,
+						err := ProactivelySaySomething(privates, conn, b.cfg.NickName, b.db,
 							b.logger, b.cfg.TimeZone)
 						if err != nil {
 							b.logger.Printf("Failed to proactively say something: %v", err)
@@ -88,7 +88,7 @@ func (b *bot) live() error {
 					}
 					nextTime = 60 * 5 * time.Second
 				}
-			}(b.cfg.Channels)
+			}(b.cfg.Privates)
 		})
 	// And a signal on disconnect
 	quit := make(chan bool)

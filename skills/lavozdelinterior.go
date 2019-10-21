@@ -2,24 +2,30 @@ package skills
 
 import (
 	"log"
+	"regexp"
 
 	"github.com/mmcdole/gofeed"
 )
 
 const rssPolitics = "https://www.lavoz.com.ar/rss/politica.xml"
 
+var econoRe = regexp.MustCompile(`divisa|dólar|cotiz|cepo`)
+
 // FetchPoliticalNews goes to the yellow local paper rss and fetches what passes for
 // political news.
-func FetchPoliticalNews(logger *log.Logger) ([]string, error) {
+func FetchPoliticalNews(logger *log.Logger) (map[string]string, error) {
 	fp := gofeed.NewParser()
 	feed, err := fp.ParseURL(rssPolitics)
 	if err != nil {
 		return nil, err
 	}
-	results := make([]string, len(feed.Items), len(feed.Items))
-	log.Printf("Found %d news from la voz", len(feed.Items))
+	results := map[string]string{}
+
 	for i := range feed.Items {
-		results[i] = feed.Items[i].Link
+		if econoRe.Match([]byte(feed.Items[i].Description)) {
+			results[feed.Items[i].Link] = feed.Items[i].Description
+		}
 	}
+
 	return results, nil
 }

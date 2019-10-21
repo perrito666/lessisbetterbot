@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,6 +31,20 @@ func (b *bot) handleMsg(conn *irc.Conn, line *irc.Line) {
 	lowerText := strings.ToLower(text)
 
 	switch {
+	case strings.HasPrefix(lowerText, "#url "):
+		parts := strings.Split(lowerText, " ")
+		num := parts[len(parts)-1]
+		index, err := strconv.Atoi(num)
+		if err != nil {
+			conn.Privmsg(channel, fmt.Sprintf("cant find url in index %s", num))
+			break
+		}
+		web, err := webFromSequence(int64(index), b.cfg.TimeZone, b.db)
+		if err != nil {
+			conn.Privmsg(channel, fmt.Sprintf("cant find url in index %s", num))
+			break
+		}
+		conn.Privmsg(channel, web)
 	case len(msgUrls) > 0: // WebPeek
 		for _, eachURL := range msgUrls {
 			u, err := webFromCacheOrHit(eachURL, line.Nick, b.cfg.TimeZone, b.db)
@@ -88,6 +103,36 @@ type webHit struct {
 	PostTime string
 	Title    string
 	Num      int64
+}
+
+func webFromSequence(seq int64, tz int, db *bolt.DB) (string, error) {
+	msg := ""
+	err := db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("webpeek"))
+		cacheHit := &webHit{}
+		return b.ForEach(func(k []byte, v []byte) error {
+			json.Unmarshal(v, cacheHit)
+			if cacheHit.Num == seq {
+				if len(cacheHit.PostTime) != 0 {
+					pt, err := time.Parse(time.RFC3339, cacheHit.PostTime)
+					if err != nil {
+						return errors.Wrap(err, "db returned invalid time")
+					}
+					pt = pt.Add(time.Duration(tz) * time.Hour)
+					printableTime := pt.Format("02/01/06 03:04")
+
+					msg = fmt.Sprintf("[%d] %s (by %s on %s) %s", cacheHit.Num, k, cacheHit.Nick, printableTime, cacheHit.Title)
+					return errors.Errorf("found")
+				}
+				return errors.Errorf("not found")
+			}
+			return nil
+		})
+	})
+	if err != nil && err.Error() != "found" && err.Error() != "not found" {
+		return "", errors.Wrap(err, "cant fetch title")
+	}
+	return msg, nil
 }
 
 func webFromCache(eachURL *url.URL, nick string, tz int, db *bolt.DB) (string, error) {

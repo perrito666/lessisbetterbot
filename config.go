@@ -42,6 +42,8 @@ const (
 	KNickserv = "nickserv"
 	// KChannel channels key
 	KChannel = "channels"
+	// KPrivates private messages keys
+	KPrivates = "privates"
 	// KStoreFolder is the folder where skills store.
 	KStoreFolder = "storagelocation"
 	// KTimeZone is the UTC difference
@@ -59,6 +61,7 @@ type Config struct {
 	Channels      []string
 	StorageFolder string
 	TimeZone      int
+	Privates      []string
 }
 
 // Write writes the config to the file writer
@@ -88,6 +91,7 @@ func LoadConfig(fileName, networkName string) (*Config, error) {
 		Ident:         nSection.Key(KIdent).String(),
 		NickservCmd:   nSection.Key(KNickserv).String(),
 		Channels:      nSection.Key(KChannel).Strings(","),
+		Privates:      nSection.Key(KPrivates).Strings(","),
 		StorageFolder: nSection.Key(KStoreFolder).String(),
 		TimeZone:      tz,
 	}, nil
@@ -119,6 +123,7 @@ func writeConfig(file io.Writer, c *Config) error {
 	nSection.NewKey(KIdent, c.Ident)
 	nSection.NewKey(KNickserv, c.NickservCmd)
 	nSection.NewKey(KChannel, strings.Join(c.Channels, ","))
+	nSection.NewKey(KPrivates, strings.Join(c.Privates, ","))
 	nSection.NewKey(KStoreFolder, c.StorageFolder)
 	nSection.NewKey(KTimeZone, strconv.Itoa(c.TimeZone))
 

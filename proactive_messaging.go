@@ -13,10 +13,10 @@ import (
 )
 
 // ProactivelySaySomething will send messages to irc channels
-func ProactivelySaySomething(channels []string, conn *irc.Conn,
+func ProactivelySaySomething(privates []string, conn *irc.Conn,
 	nick string, db *bolt.DB, logger *log.Logger, tz int) error {
-	if len(channels) == 0 {
-		logger.Println("no channels to talk to")
+	if len(privates) == 0 {
+		logger.Println("no privates to talk to")
 		return nil
 	}
 	newsURLs, err := skills.FetchPoliticalNews(logger)
@@ -24,9 +24,11 @@ func ProactivelySaySomething(channels []string, conn *irc.Conn,
 		return err
 	}
 	found := false
-	for i := range newsURLs {
+	i := 0
+	cotizationGiven := false
+	for k, v := range newsURLs {
 		var parsed *url.URL
-		parsed, err := url.Parse(newsURLs[i])
+		parsed, err := url.Parse(k)
 		if err != nil {
 			logger.Printf("failed to parse fetched url: %v", err)
 			// log this error
@@ -53,6 +55,7 @@ func ProactivelySaySomething(channels []string, conn *irc.Conn,
 			// let us not spam the channel if there are many news
 			<-time.After(5 * time.Second)
 		}
+		i++
 		found = true
 		u, err = webFromCacheOrHit(parsed, nick, tz, db)
 		if err != nil {
@@ -63,19 +66,29 @@ func ProactivelySaySomething(channels []string, conn *irc.Conn,
 			logger.Printf("failed to fetch url from cache: %v", errMsg)
 			continue
 		}
-		for _, channel := range channels {
-			conn.Privmsg("#"+channel, fmt.Sprintf("%s: \"%s\"", nick, u))
+		tzNow := time.Now().Add(time.Duration(tz) * time.Hour)
+		nowH, _, _ := tzNow.Clock()
+		if nowH < 7 {
+			// el cheap-o night mode
+			continue
+		}
+		for _, private := range privates {
+			conn.Privmsg(private, fmt.Sprintf("%s: \"%s\"", nick, u))
+			conn.Privmsg(private, fmt.Sprintf("(%s)", strings.Replace(v, "\n", " ", -1)))
 			// This is argentinian news about dollar, lets also send the
 			// exchange rate.
-			if strings.Count(strings.ToLower(u), "dólar") > 0 ||
-				strings.Count(strings.ToLower(u), "cotiz") > 0 ||
-				strings.Count(strings.ToLower(u), "default") > 0 {
-				usdArs, err := skills.DollArs(skills.USD, db, logger)
-				if err != nil {
-					logger.Printf("proactive dollars failed: %v", err)
-					continue
+			if !cotizationGiven {
+				if strings.Count(strings.ToLower(u), "dólar") > 0 ||
+					strings.Count(strings.ToLower(u), "cotización") > 0 ||
+					strings.Count(strings.ToLower(u), "default") > 0 {
+					usdArs, err := skills.DollArs(skills.USD, db, logger)
+					if err != nil {
+						logger.Printf("proactive dollars failed: %v", err)
+						continue
+					}
+					conn.Privmsg(private, fmt.Sprintf("%s: %s", nick, usdArs))
 				}
-				conn.Privmsg("#"+channel, fmt.Sprintf("%s: %s", nick, usdArs))
+				cotizationGiven = true
 			}
 		}
 
