@@ -159,7 +159,8 @@ func DollBlArs(currency string, db *bolt.DB, logger *log.Logger) (string, error)
 	var buy, sell []byte
 	var dollar []byte
 	extractUSD := func(i int, innerS *goquery.Selection) {
-		text := innerS.Text()
+		child := innerS.ChildrenFiltered(".numDolar")
+		text := child.Text()
 		parts := strings.Split(text, " ")
 		if len(parts) == 2 {
 			dollar = []byte(parts[1])
